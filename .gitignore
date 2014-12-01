@@ -1,0 +1,8 @@
+build
+.build*
+node_modules
+.*.swp
+npm-debug.log
+package.json.old
+.fuse_hidden*
+
