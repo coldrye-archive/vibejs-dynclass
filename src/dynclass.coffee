@@ -30,20 +30,41 @@ unless exports.dynclass?
 
     # Custom extend function so we do not have to
     # depend on underscore
-    _extend = (obj, extensions, logger) ->
+    _extend = (obj, extensions, configurable, debug) ->
 
         for key, value of extensions
 
             if __hasOwnProperty.call extensions, key
 
-                logger?.debug "dynclass:extending class by #{key} = #{value}"
+                debug "dynclass:extending class by #{key} = #{value}"
 
-                obj[key] = value
+                enumerable = true
+
+                if key.charAt(0) == '_'
+
+                    debug "dynclass:making #{key} non enumerable"
+
+                    enumerable = false
+
+                Object.defineProperty obj, key,
+
+                    enumerable : enumerable
+
+                    configurable : configurable
+
+                    value : value
 
         undefined
 
-    # default ctor mixin
-    defaultCtorMixin = ->
+
+    _extenderPartial = (obj, configurable, debug) ->
+
+        (extensions) ->
+
+            _extend obj, extensions, configurable, debug
+
+    # no op function
+    noopfun = ->
 
     # counter used for creating unique anonymous class names
     # in case that the user fails to provide a custom name
@@ -52,46 +73,50 @@ unless exports.dynclass?
     # The function dynclass models a factory for dynamically creating
     # new classes.
     #
-    # @param Object decl declaration options
-    # @option decl Object logger optional logger used for debugging purposes (must have a debug() method)
-    # @option decl Object base base class
-    # @option decl String name name of the dynamically created class
-    # @option decl Boolean chainSuper chain call to super on instantiation, default: true 
-    # @option decl Function ctor mixin to be applied on instantiation
-    # @option decl Object|Function extend instance methods and properties
-    # @option decl Object|Function static static methods and properties
-    # TODO:@option decl Boolean freeze true whether the resulting class should be frozen, default: false
-    exports.dynclass = (decl = {}) ->
+    # @param Object options optionsaration options
+    # @option options Object logger optional logger used for debugging purposes (must have a debug() method)
+    # @option options Object base base class
+    # @option options String name name of the dynamically created class
+    # @option options Boolean chainSuper chain call to super on instantiation, default: true
+    # @option options Function ctor mixin to be applied on instantiation
+    # @option options Object|Function extend instance methods and properties or callback
+    # @option options Object|Function static static methods and properties or callback
+    # @option options Boolean configurable false whether the members of the class should be non configurable, default: true
+    # TODO:@option options Boolean freeze true whether the resulting class should be frozen, default: false
+    exports.dynclass = (options = {}) ->
 
         result = null
 
-        logger = decl.logger ? null
+        logger = options.logger ? null
 
         if logger and typeof logger.debug != 'function'
 
             throw new Error 'the specified logger does not have a debug method.'
 
-        name = decl.name
+        debug = if logger then logger.debug else noopfun
+
+        name = options.name
         if not name
 
             name = "AnonClass_#{anonClassCount}"
             anonClassCount++
 
-        logger?.debug "dynclass:creating class #{name}"
+        debug "dynclass:creating class #{name}"
 
-        ctorMixin = decl.ctor || defaultCtorMixin
+        ctorMixin = options.ctor || noopfun
 
-        if ctorMixin != defaultCtorMixin
+        if ctorMixin != noopfun
 
-            logger?.debug 'dynclass:using custom ctor mixin'
+            debug 'dynclass:using custom ctor mixin'
 
-        chainSuper = if decl.chainSuper is false then false else true
+        chainSuper = if options.chainSuper is false then false else true
+        configurable = if options.configurable is false then false else true
 
-        base = decl.base
+        base = options.base
 
         if base and chainSuper is true
 
-            logger?.debug "dynclass:chaining super on instantiation"
+            debug 'dynclass:chaining super on instantiation'
 
             eval "result = function #{name}() {" +
                  "    #{name}.__super__.constructor.apply(" +
@@ -102,7 +127,7 @@ unless exports.dynclass?
 
         else
 
-            logger?.debug "dynclass:not chaining super on instantiation"
+            debug 'dynclass:not chaining super on instantiation'
 
             eval "result = function #{name}() {" +
                  "    ctorMixin.apply(this, arguments);" +
@@ -110,35 +135,43 @@ unless exports.dynclass?
 
         if base
 
-            logger?.debug "dynclass:extending specified base class #{base.name}"
+            debug 'dynclass:inheriting from specified base class #{base.name}'
 
             eval("__extends(result, base)")
 
-        if decl.static
+        extender = _extenderPartial result, configurable, debug
 
-            logger?.debug "dynclass:mixing in specified static properties"
+        if options.static
 
-            if typeof decl.static is 'function'
+            debug 'dynclass:mixing in specified static properties'
 
-                decl.static result
+            if typeof options.static is 'function'
 
-            else
+                debug 'dynclass:calling user defined callback'
 
-                _extend result, decl.static
-
-        if decl.extend
-
-            logger?.debug "dynclass:mixing in specified instance properties"
-
-            if typeof decl.extend is 'function'
-
-                decl.extend result
+                options.static result, extender, logger 
 
             else
 
-                _extend result.prototype, decl.extend, logger
+                extender options.static
 
-        if decl.freeze
+        if options.extend
+
+            debug 'dynclass:mixing in specified instance properties'
+
+            if typeof options.extend is 'function'
+
+                debug 'dynclass:calling user defined callback'
+
+                options.extend result, extender, logger
+
+            else
+
+                extender options.extend
+
+        if options.freeze
+
+            debug 'dynclass:freezing created class'
 
             Object.freeze result
 
