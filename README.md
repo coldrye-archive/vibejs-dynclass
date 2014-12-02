@@ -55,10 +55,35 @@ You can install dynclass in multiple different ways.
 
 ## Usage
 
+TODO
+
 
 ### Node - Javascript
 
-TODO
+    require('vibejs-dynclass');
+
+    var DynClass = dynclass({
+
+        name : 'DynClass',
+
+        static : {
+            staticMethod : function () {
+                console.log('called DynClass#staticMethod');
+            }
+        },
+
+        instance : {
+            method : function () {
+                console.log('called DynClass#method');
+            }
+        },
+
+    });
+
+    DynClass.staticMethod();
+    var instance = new DynClass();
+    instance.method();
+
 
 ### Node - Coffee-Script
 
