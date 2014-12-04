@@ -26,42 +26,30 @@ unless exports.dynclass?
     # the latest version of __extends
     class _JustForTheExtends extends Object
 
-    __hasOwnProperty = Object.hasOwnProperty
+    __hasOwnProperty = {}.hasOwnProperty
 
     # Custom extend function so we do not have to
     # depend on underscore
-    _extend = (obj, extensions, configurable, debug) ->
+    _extend = (klass, extensions, debug) ->
 
-        for key, value of extensions
+        for key, field of extensions
 
             if __hasOwnProperty.call extensions, key
 
-                debug "dynclass:extending class by #{key} = #{value}"
+                debug "dynclass:extending class by #{key} = #{field}"
 
-                enumerable = true
+                field.validate()
 
-                if key.charAt(0) == '_'
-
-                    debug "dynclass:making #{key} non enumerable"
-
-                    enumerable = false
-
-                Object.defineProperty obj, key,
-
-                    enumerable : enumerable
-
-                    configurable : configurable
-
-                    value : value
+                field.applyTo klass, key
 
         undefined
 
 
-    _extenderPartial = (obj, configurable, debug) ->
+    _extenderPartial = (klass, debug) ->
 
         (extensions) ->
 
-            _extend obj, extensions, configurable, debug
+            _extend klass, extensions, debug
 
     # no op function
     noopfun = ->
@@ -110,7 +98,6 @@ unless exports.dynclass?
             debug 'dynclass:using custom ctor mixin'
 
         chainSuper = if options.chainSuper is false then false else true
-        configurable = if options.configurable is false then false else true
 
         base = options.base
 
@@ -139,31 +126,17 @@ unless exports.dynclass?
 
             eval("__extends(result, base)")
 
-        extender = _extenderPartial result, configurable, debug
-
-        if options.static
-
-            debug 'dynclass:mixing in specified static properties'
-
-            if typeof options.static is 'function'
-
-                debug 'dynclass:calling user defined callback'
-
-                options.static result, extender, logger 
-
-            else
-
-                extender options.static
+        extender = _extenderPartial result, debug
 
         if options.extend
 
-            debug 'dynclass:mixing in specified instance properties'
+            debug 'dynclass:defining fields'
 
             if typeof options.extend is 'function'
 
                 debug 'dynclass:calling user defined callback'
 
-                options.extend result, extender, logger
+                options.static result, extender, logger 
 
             else
 
@@ -176,4 +149,253 @@ unless exports.dynclass?
             Object.freeze result
 
         result
+
+
+    class AbstractField
+
+        @MODIFIER_ABSTRACT = 1
+        @MODIFIER_FINAL = 2
+        @MODIFIER_PRIVATE = 4
+        @MODIFIER_STATIC = 8
+
+        @FIELD_PROPERTY = 128
+        @FIELD_METHOD = 256
+
+        constructor : (type) ->
+
+            @flags = type
+
+            Object.defineProperty @, 'abstract',
+
+                enumerable : true
+
+                get : ->
+
+                    if @isPrivate
+
+                        throw new Error 'private fields cannot be declared abstract'
+
+                    if @isFinal
+
+                        throw new Error 'final fields cannot be declared abstract'
+
+                    @flags |= AbstractField.MODIFIER_ABSTRACT
+
+                    @
+
+            Object.defineProperty @, 'final',
+
+                enumerable : true
+
+                get : ->
+
+                    if @isAbstract
+
+                        throw new Error 'abstract fields cannot be declared final'
+
+                    @flags |= AbstractField.MODIFIER_FINAL
+
+                    @
+
+            Object.defineProperty @, 'private',
+
+                enumerable : true
+
+                get : ->
+
+                    if @isAbstract
+
+                        throw new Error 'abstract fields cannot be declared private'
+
+                    @flags |= AbstractField.MODIFIER_PRIVATE
+
+                    @
+
+            Object.defineProperty @, 'static',
+
+                enumerable : true
+
+                get : ->
+
+                    @flags |= AbstractField.MODIFIER_STATIC
+
+                    @
+
+            Object.defineProperty @, 'isStatic',
+
+                enumerable : true
+
+                get : ->
+
+                    (@flags & AbstractField.MODIFIER_STATIC) != 0
+
+            Object.defineProperty @, 'isAbstract',
+
+                enumerable : true
+
+                get : ->
+
+                    (@flags & AbstractField.MODIFIER_ABSTRACT) != 0
+
+            Object.defineProperty @, 'isFinal',
+
+                enumerable : true
+
+                get : ->
+
+                    (@flags & AbstractField.MODIFIER_FINAL) != 0
+
+            Object.defineProperty @, 'isPrivate',
+
+                enumerable : true
+
+                get : ->
+
+                    (@flags & AbstractField.MODIFIER_PRIVATE) != 0
+
+        validate : ->
+
+            throw new Error 'derived classes must implement this.'
+
+        applyTo : (klass, name) ->
+
+            throw new Error 'derived classes must implement this.'
+
+
+    determineApplicant = (klass, field) ->
+
+        if field.isStatic then klass else klass.prototype
+
+
+    class PropertyField extends AbstractField
+
+        constructor : ->
+
+            super AbstractField.FIELD_PROPERTY
+
+            Object.defineProperty @, 'getter',
+
+                enumerable : true
+
+                get : ->
+
+                    (getter) ->
+
+                        @getter = getter
+
+                        @
+
+            Object.defineProperty @, 'setter',
+
+                enumerable : true
+
+                get : ->
+
+                    (setter) ->
+
+                        @setter = setter
+
+                        @
+
+            Object.defineProperty @, 'isReadonly',
+
+                enumerable : true
+
+                get : ->
+
+                    not @setter
+
+        validate : (name) ->
+
+            if @getter and typeof @getter != 'function'
+
+                throw new Error "getter for #{name} is not a function"
+
+            if @setter and typeof @setter != 'function'
+
+                throw new Error "setter for #{name} is not a function"
+
+            throw new Error 'not implemented yet'
+
+        applyTo : (klass, name) ->
+
+            applicant = determineApplicant klass, @
+
+            Object.defineProperty applicant, name,
+
+                enumerable : not @isPrivate
+
+                configurable : not @isFinal
+
+                get : @getter
+
+                set : @setter
+
+
+    class MethodField extends AbstractField
+
+        constructor : ->
+
+            super AbstractField.FIELD_METHOD
+
+            Object.defineProperty @, 'impl',
+
+                enumerable : true
+
+                get : ->
+
+                    (impl) =>
+
+                        @impl = impl
+
+                        @
+
+        validate : (name) ->
+
+            if @impl and typeof @impl != 'function'
+
+                throw new Error 'impl is not a function'
+
+            if not @impl and @isFinal or not @isAbstract
+
+                throw new Error "non abstract method #{name} must have an impl"
+
+        applyTo : (klass, name) ->
+
+            applicant = determineApplicant klass, @
+
+            # provide default implementation when available
+            impl = @impl
+            if @isAbstract and not impl
+
+                impl = ->
+
+                    throw new Error "derived classes must implement #{klass.name}##{name}"
+
+            Object.defineProperty applicant, name,
+
+                enumerable : not @isPublic
+
+                # @isAbstract or not @isFinal
+                configurable : not @isFinal 
+
+                value : impl
+
+
+    Object.defineProperty exports.dynclass, 'property',
+
+        enumerable : true
+
+        get : ->
+
+            new PropertyField()
+
+
+    Object.defineProperty exports.dynclass, 'method',
+
+        enumerable : true
+
+        get : ->
+
+            new MethodField()
 
