@@ -22,37 +22,42 @@ exports = window ? global
 # guard preventing us from exporting twice
 unless exports.dynclass?
 
+
     # dummy class used for making coffee compile in 
     # the latest version of __extends
     class _JustForTheExtends extends Object
 
+
     __hasOwnProperty = {}.hasOwnProperty
+
 
     # Custom extend function so we do not have to
     # depend on underscore
-    _extend = (klass, extensions, debug) ->
+    _extend = (klass, base, extensions, debug) ->
 
-        for key, field of extensions
+        for name, field of extensions
 
-            if __hasOwnProperty.call extensions, key
+            field.name = name
 
-                debug "dynclass:extending class by #{key} = #{field}"
+            debug "dynclass:adding field #{field}"
 
-                field.validate()
+            field.validate base
 
-                field.applyTo klass, key
+            field.applyTo klass, base, debug
 
         undefined
 
 
-    _extenderPartial = (klass, debug) ->
+    _extenderPartial = (klass, base, debug) ->
 
         (extensions) ->
 
-            _extend klass, extensions, debug
+            _extend klass, base, extensions, debug
 
-    # no op function
+
+    # no op function used as the default ctor mixin
     noopfun = ->
+
 
     # counter used for creating unique anonymous class names
     # in case that the user fails to provide a custom name
@@ -126,7 +131,7 @@ unless exports.dynclass?
 
             eval("__extends(result, base)")
 
-        extender = _extenderPartial result, debug
+        extender = _extenderPartial result, base, debug
 
         if options.extend
 
@@ -142,13 +147,26 @@ unless exports.dynclass?
 
                 extender options.extend
 
+        if options.seal
+
+            debug 'dynclass:sealing created class'
+
+            Object.seal result
+            Object.seal result.prototype
+
         if options.freeze
 
             debug 'dynclass:freezing created class'
 
             Object.freeze result
+            Object.freeze result.prototype
 
         result
+
+
+    determineApplicant = (klass, field) ->
+
+        if field.isStatic then klass else klass.prototype
 
 
     class AbstractField
@@ -163,7 +181,9 @@ unless exports.dynclass?
 
         constructor : (type) ->
 
-            @flags = type
+            @name = null
+            @flags = 0
+            @set type
 
             Object.defineProperty @, 'abstract',
 
@@ -179,9 +199,7 @@ unless exports.dynclass?
 
                         throw new Error 'final fields cannot be declared abstract'
 
-                    @flags |= AbstractField.MODIFIER_ABSTRACT
-
-                    @
+                    @set AbstractField.MODIFIER_ABSTRACT
 
             Object.defineProperty @, 'final',
 
@@ -193,9 +211,7 @@ unless exports.dynclass?
 
                         throw new Error 'abstract fields cannot be declared final'
 
-                    @flags |= AbstractField.MODIFIER_FINAL
-
-                    @
+                    @set AbstractField.MODIFIER_FINAL
 
             Object.defineProperty @, 'private',
 
@@ -207,9 +223,7 @@ unless exports.dynclass?
 
                         throw new Error 'abstract fields cannot be declared private'
 
-                    @flags |= AbstractField.MODIFIER_PRIVATE
-
-                    @
+                    @set AbstractField.MODIFIER_PRIVATE
 
             Object.defineProperty @, 'static',
 
@@ -217,9 +231,7 @@ unless exports.dynclass?
 
                 get : ->
 
-                    @flags |= AbstractField.MODIFIER_STATIC
-
-                    @
+                    @set AbstractField.MODIFIER_STATIC
 
             Object.defineProperty @, 'isStatic',
 
@@ -227,7 +239,7 @@ unless exports.dynclass?
 
                 get : ->
 
-                    (@flags & AbstractField.MODIFIER_STATIC) != 0
+                    @isset AbstractField.MODIFIER_STATIC
 
             Object.defineProperty @, 'isAbstract',
 
@@ -235,7 +247,7 @@ unless exports.dynclass?
 
                 get : ->
 
-                    (@flags & AbstractField.MODIFIER_ABSTRACT) != 0
+                    @isset AbstractField.MODIFIER_ABSTRACT
 
             Object.defineProperty @, 'isFinal',
 
@@ -243,7 +255,7 @@ unless exports.dynclass?
 
                 get : ->
 
-                    (@flags & AbstractField.MODIFIER_FINAL) != 0
+                    @isset AbstractField.MODIFIER_FINAL
 
             Object.defineProperty @, 'isPrivate',
 
@@ -251,20 +263,48 @@ unless exports.dynclass?
 
                 get : ->
 
-                    (@flags & AbstractField.MODIFIER_PRIVATE) != 0
+                    @isset AbstractField.MODIFIER_PRIVATE
 
-        validate : ->
+        isset : (flag) ->
+
+            (@flags & flag) != 0
+
+        set: (flag) ->
+
+            @flags |= flag
+
+            @
+
+        validate : (base) ->
+
+            if base
+
+                baseApplicant = determineApplicant base, @
+
+                if __hasOwnProperty.call baseApplicant, @name
+
+                    descriptor = Object.getOwnPropertyDescriptor baseApplicant, @name
+
+                    if not descriptor.configurable and descriptor.enumerable
+
+                        throw new Error "public final field #{base.name}##{@name} cannot be overridden"
+
+        applyTo : (klass, base, debug) ->
 
             throw new Error 'derived classes must implement this.'
 
-        applyTo : (klass, name) ->
+        toString : ->
 
-            throw new Error 'derived classes must implement this.'
+            components = []
+            components.push 'private' if @isPrivate
+            components.push 'abstract' if @isAbstract
+            components.push 'final' if @isFinal
+            components.push 'readonly' if @isReadonly
+            components.push 'property' if @isset AbstractField.FIELD_PROPERTY
+            components.push 'method' if @isset AbstractField.FIELD_METHOD
+            components.push @name
 
-
-    determineApplicant = (klass, field) ->
-
-        if field.isStatic then klass else klass.prototype
+            "[Field #{components.join ' '}]"
 
 
     class PropertyField extends AbstractField
@@ -273,15 +313,49 @@ unless exports.dynclass?
 
             super AbstractField.FIELD_PROPERTY
 
+            @_getter = null
+            @_setter = null
+            @_readonly = false
+            @_defaultValue = null
+
+            Object.defineProperty @, 'defaultValue',
+
+                enumerable : true
+
+                get : ->
+
+                    if @isAbstract
+
+                        throw new Error 'abstract properties cannot have a default value'
+
+                    (defaultValue) =>
+
+                        @_defaultValue = defaultValue
+
+                        @
+
+            Object.defineProperty @, 'readonly',
+
+                enumerable : true
+
+                get : ->
+
+                    if @_setter
+
+                        throw new Error 'readonly properties cannot have a setter'
+                    @_readonly = true
+
+                    @
+
             Object.defineProperty @, 'getter',
 
                 enumerable : true
 
                 get : ->
 
-                    (getter) ->
+                    (getter) =>
 
-                        @getter = getter
+                        @_getter = getter
 
                         @
 
@@ -291,9 +365,13 @@ unless exports.dynclass?
 
                 get : ->
 
-                    (setter) ->
+                    if @isReadonly
 
-                        @setter = setter
+                        throw new Error 'readonly properties cannot have a setter'
+
+                    (setter) =>
+
+                        @_setter = setter
 
                         @
 
@@ -303,33 +381,99 @@ unless exports.dynclass?
 
                 get : ->
 
-                    not @setter
+                    @_readonly
 
-        validate : (name) ->
+        validate : (base) ->
 
-            if @getter and typeof @getter != 'function'
+            super base
 
-                throw new Error "getter for #{name} is not a function"
+            if @name is null
 
-            if @setter and typeof @setter != 'function'
+                throw new Error 'name was not set'
 
-                throw new Error "setter for #{name} is not a function"
+            if @_getter and typeof @_getter != 'function'
 
-            throw new Error 'not implemented yet'
+                throw new Error "getter for #{@name} is not a function"
 
-        applyTo : (klass, name) ->
+            if @_setter and typeof @_setter != 'function'
+
+                throw new Error "setter for #{@name} is not a function"
+
+        applyTo : (klass, base, debug) ->
 
             applicant = determineApplicant klass, @
 
-            Object.defineProperty applicant, name,
+            # TODO:cleanup
+
+            name = @name
+
+            descriptor =
 
                 enumerable : not @isPrivate
 
                 configurable : not @isFinal
 
-                get : @getter
+            hasUserDefinedGetter = true
+            internalPropertyName = "_#{name}"
 
-                set : @setter
+            if @_getter is null
+
+                hasUserDefinedGetter = false
+
+                if @isAbstract
+
+                    @_getter = ->
+
+                        throw new Error "abstract property #{klass.name}##{name} must be implemented"
+
+                else
+
+                    @_getter = ->
+
+                        @[internalPropertyName]
+
+            descriptor['get'] = @_getter
+
+            if not @isReadonly
+
+                if @_setter is null
+
+                    if @isAbstract
+
+                        @_setter = ->
+
+                            throw new Error "abstract property #{klass.name}##{name} must be implemented"
+
+                    else
+
+                        @_setter = (value) ->
+
+                            @[internalPropertyName] = value
+
+                            undefined
+            else
+
+                # make sure that readonly properties cannot be set
+                @_setter = ->
+
+                    throw new Error "property #{klass.name}##{name} is readonly"
+
+            descriptor['set'] = @_setter
+
+            Object.defineProperty applicant, name, descriptor
+
+            # define internal property
+            if not hasUserDefinedGetter
+
+                Object.defineProperty applicant, internalPropertyName,
+
+                    enumerable : false
+
+                    writable : true
+
+                    configurable : false
+
+                    value : @_defaultValue
 
 
     class MethodField extends AbstractField
@@ -337,6 +481,8 @@ unless exports.dynclass?
         constructor : ->
 
             super AbstractField.FIELD_METHOD
+
+            @_impl = null
 
             Object.defineProperty @, 'impl',
 
@@ -346,37 +492,44 @@ unless exports.dynclass?
 
                     (impl) =>
 
-                        @impl = impl
+                        @_impl = impl
 
                         @
 
-        validate : (name) ->
+        validate : (base) ->
 
-            if @impl and typeof @impl != 'function'
+            super base
 
-                throw new Error 'impl is not a function'
+            if @name is null
 
-            if not @impl and @isFinal or not @isAbstract
+                throw new Error 'name was not set'
 
-                throw new Error "non abstract method #{name} must have an impl"
+            if @_impl and typeof @_impl != 'function'
 
-        applyTo : (klass, name) ->
+                throw new Error 'impl for method #{@name} is not a function'
+
+            if not @_impl and (@isFinal or not @isAbstract)
+
+                throw new Error "non abstract method #{@name} must have an impl"
+
+        applyTo : (klass, base, debug) ->
 
             applicant = determineApplicant klass, @
 
-            # provide default implementation when available
-            impl = @impl
+            name = @name
+
+            impl = @_impl
+
             if @isAbstract and not impl
 
                 impl = ->
 
-                    throw new Error "derived classes must implement #{klass.name}##{name}"
+                    throw new Error "derived classes must implement #{klass.name}.#{name}"
 
-            Object.defineProperty applicant, name,
+            Object.defineProperty applicant, @name,
 
-                enumerable : not @isPublic
+                enumerable : not @isPrivate
 
-                # @isAbstract or not @isFinal
                 configurable : not @isFinal 
 
                 value : impl
