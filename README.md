@@ -22,6 +22,8 @@ dynclass uses eval in combination with some boilerplate code to make this work w
  - *FUTURE* class modifiers: abstract, private and final
  - field modifiers: abstract, private, final, readonly and static
  - field types: method, property and *FUTURE* inner class
+ - NPM package
+ - Meteor package
 
 
 ## LICENSE
@@ -79,7 +81,7 @@ var Tool = dynclass({
         version : dynclass.property.readonly.static.final.defaultValue('1.0.0'),
 
         onAbout : dynclass.method.impl(function () {
-           window.alert('About ' + Tool.name + ' ' + Tool.version);
+           console.log('About ' + Tool.name + ' ' + Tool.version);
         }),
 
        main : dynclass.method.static.impl(function () {
