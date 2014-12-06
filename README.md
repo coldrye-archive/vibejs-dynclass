@@ -17,7 +17,11 @@ dynclass uses eval in combination with some boilerplate code to make this work w
 
 ### Features
 
- - classes can be declared dynamically
+ - declarative API
+ - named classes
+ - *FUTURE* class modifiers: abstract, private and final
+ - field modifiers: abstract, private, final, readonly and static
+ - field types: method, property and *FUTURE* inner class
 
 
 ## LICENSE
@@ -57,33 +61,36 @@ You can install dynclass in multiple different ways.
 
 TODO
 
-
 ### Node - Javascript
 
-    require('vibejs-dynclass');
+```javascript
+require('vibejs-dynclass');
 
-    var DynClass = dynclass({
+var Tool = dynclass({
 
-        name : 'DynClass',
+    name : 'Tool',
 
-        static : {
-            staticMethod : function () {
-                console.log('called DynClass#staticMethod');
-            }
-        },
+    constructor : function () {
+        // ...
+    },
 
-        instance : {
-            method : function () {
-                console.log('called DynClass#method');
-            }
-        },
+    extend : {
 
-    });
+        version : dynclass.property.readonly.static.final.defaultValue('1.0.0'),
 
-    DynClass.staticMethod();
-    var instance = new DynClass();
-    instance.method();
+        onAbout : dynclass.method.impl(function () {
+           window.alert('About ' + Tool.name + ' ' + Tool.version);
+        }),
 
+       main : dynclass.method.static.impl(function () {
+           var tool = new Tool();
+           tool.onAbout();
+       })
+    }
+});
+
+Tool.main();
+```
 
 ### Node - Coffee-Script
 
