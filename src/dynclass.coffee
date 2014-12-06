@@ -41,6 +41,10 @@ unless exports.dynclass?
 
             debug "dynclass:adding field #{field}"
 
+            if not (field instanceof AbstractField)
+
+                throw new Error "field #{name} is not of the expected type, use either dynclass.method or dynclass.property"
+
             field.validate base
 
             field.applyTo klass, base, debug
