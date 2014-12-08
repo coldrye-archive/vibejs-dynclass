@@ -24,17 +24,188 @@ require 'vibejs-subclassof/macros'
 require '../src/dynclass'
 
 
+# since we are unable to test some implementation details
+# as they are internal and not exported, we resort to
+# testing only what gets exported
+
+
+# useful helpers
+
+classFactoryFunctionTest = (topic) ->
+
+    assert.isFunction topic
+    assert.isEnumerable topic, 'flags'
+    assert.isEnumerable topic, 'abstract'
+    assert.isEnumerable topic, 'static'
+    assert.isEnumerable topic, 'final'
+    assert.isEnumerable topic, 'private'
+    assert.isEnumerable topic, 'isAbstract'
+    assert.isEnumerable topic, 'isPrivate'
+    assert.isEnumerable topic, 'isStatic'
+    assert.isEnumerable topic, 'isFinal'
+
+
+testHelperFunctionTest = (topic) ->
+
+    assert.isFunction topic
+
+    # test against error handling
+
+    # klass is null
+    cb = ->
+
+        topic null
+
+    assert.throws cb, TypeError
+
+    # klass is not a function 
+    cb = ->
+
+        topic {}
+
+    assert.throws cb, TypeError
+
+    # fieldName is not defined
+    cb = ->
+
+        topic dynclass(), 'undefined'
+
+    assert.throws cb, TypeError
+
+    # fieldName is not a string
+    cb = ->
+
+        topic dynclass(), {}
+
+    assert.throws cb, TypeError
+
+
 vows
 
     .describe 'dynclass'
 
     .addBatch
 
-        'dynclass must have been exported to the global namespace' : ->
+        'must have been exported to the global namespace' : ->
 
             assert.isDefined (window ? global).dynclass
+
+        'is a function' : ->
+
             assert.isFunction dynclass
 
+        'has a property "static"' :
+
+            'that is enumerable' : ->
+
+                assert.isEnumerable dynclass, 'static'
+
+            'that when accessed' :
+
+                topic: ->
+
+                    dynclass.static
+
+                'has a specified set of qualities' : classFactoryFunctionTest
+
+                'and called with the proper set of options will return the requested class' : (topic) ->
+
+                    klass = topic()
+
+                    assert.isFunction klass
+                    assert.isTrue topic.isStatic
+
+        'has a property "final"' :
+
+            'that is enumerable' : ->
+
+                assert.isEnumerable dynclass, 'final'
+
+            'that when accessed' :
+
+                topic: ->
+
+                    dynclass.final
+
+                'has a specified set of qualities' : classFactoryFunctionTest
+
+                'and called with the proper set of options will return the requested class' : (topic) ->
+
+                    klass = topic()
+
+                    assert.isFunction klass
+                    assert.isTrue topic.isFinal
+
+                'and when chained with "abstract" will raise an exception' : (topic) ->
+
+                    cb = ->
+
+                        topic.abstract
+
+                    assert.throws cb, TypeError
+
+        'has a property "private"' :
+
+            'that is enumerable' : ->
+
+                assert.isEnumerable dynclass, 'private'
+
+            'that when accessed' :
+
+                topic: ->
+
+                    dynclass.private
+
+                'has a specified set of qualities' : classFactoryFunctionTest
+
+                'and called with the proper set of options will return the requested class' : (topic) ->
+
+                    klass = topic()
+
+                    assert.isFunction klass
+                    assert.isTrue topic.isPrivate
+
+        'has a property "abstract"' :
+
+            'that is enumerable' : ->
+
+                assert.isEnumerable dynclass, 'abstract'
+
+            'that when accessed' :
+
+                topic: ->
+
+                    dynclass.abstract
+
+                'has a specified set of qualities' : classFactoryFunctionTest
+
+                'and called with the proper set of options will return the requested class' : (topic) ->
+
+                    klass = topic()
+
+                    assert.isFunction klass
+                    assert.isTrue topic.isAbstract
+
+                'and when chained with "final" will raise an exception' : (topic) ->
+
+                    cb = ->
+
+                        topic.final
+
+                    assert.throws cb, TypeError
+
+        'has a helper "isStatic"' :
+
+            topic : ->
+
+                dynclass.isStatic
+
+            'that has a specified set of qualities and specific error handling behaviour' : testHelperFunctionTest
+
+
+    .export module
+
+###
         'when creating a class dynamically' :
 
             'the created class' :
@@ -127,6 +298,6 @@ vows
                 'must have the expected non enumerable private static fields' : (topic) ->
 
                     assert.isNotEnumerable topic.TestClass, '_PrivateStaticProperty'
+###
 
-    .export module
 
