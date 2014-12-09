@@ -35,10 +35,9 @@ unless exports.dynclass?
     __hasOwnProperty = {}.hasOwnProperty
 
 
-    # Helper function mainly used by ClassField
-    # to be able to chain modifiers with optional
-    # parameters
-    _extendFunction = (f, extensions) ->
+    # Helper function used by ClassFactory to be able to
+    # chain modifiers with optional parameters
+    _extendFunction = (func, extensions) ->
 
         for name in Object.keys extensions
 
@@ -48,7 +47,7 @@ unless exports.dynclass?
 
             defineProperty = (name) ->
 
-                Object.defineProperty f, name,
+                Object.defineProperty func, name,
 
                     enumerable : true
 
@@ -58,15 +57,13 @@ unless exports.dynclass?
 
             defineProperty name
 
-        f
+        func
 
     # Custom extend function so we do not have to
     # depend on underscore
-    _extend = (klass, base, extensions, debug) ->
+    _extend = (klass, base, extensions) ->
 
         for name, field of extensions
-
-            debug "dynclass:adding field #{name}"
 
             if not (field instanceof AbstractField)
 
@@ -84,18 +81,24 @@ unless exports.dynclass?
 
             field.name = name
 
+            if dynclass.logger
+                dynclass.logger.debug "dynclass:validating field #{field} with flags #{field.flags}"
+
             field.validate base
 
-            field.applyTo klass, base, debug
+            if dynclass.logger
+                dynclass.logger.debug "dynclass:declaring field #{field}"
+
+            field.applyTo klass, base
 
         undefined
 
 
-    _extenderPartial = (klass, base, debug) ->
+    _extenderPartial = (klass, base) ->
 
         (extensions) ->
 
-            _extend klass, base, extensions, debug
+            _extend klass, base, extensions
 
 
     # no op function used as the default ctor mixin
@@ -106,11 +109,11 @@ unless exports.dynclass?
     # in case that the user fails to provide a custom name
     anonClassCount = 0
 
+
     # The function dynclass models a factory for dynamically creating
     # new classes.
     #
     # @param Object options declaration options
-    # @option options Object logger optional logger used for debugging purposes (must have a debug() method)
     # @option options Object base base class
     # @option options String name name of the dynamically created class
     # @option options Boolean chainSuper chain call to super on instantiation, default: true
@@ -120,27 +123,23 @@ unless exports.dynclass?
 
         result = null
 
-        logger = options.logger ? null
-
-        if logger and typeof logger.debug != 'function'
-
-            throw new Error 'the specified logger does not have a debug method.'
-
-        debug = if logger then logger.debug else noopfun
-
         name = options.name
         if not name
 
             name = "AnonClass_#{anonClassCount}"
             anonClassCount++
 
-        debug "dynclass:creating class #{name}"
+        logger = dynclass.logger
+
+        if logger
+            logger.debug "dynclass:creating class #{name} with flags #{options.__dynclass_flags__ || 0}"
 
         ctorMixin = options.ctor || noopfun
 
         if ctorMixin != noopfun
 
-            debug 'dynclass:using custom ctor mixin'
+            if logger
+                logger.debug 'dynclass:using custom ctor mixin'
 
         chainSuper = if options.chainSuper is false then false else true
 
@@ -148,7 +147,8 @@ unless exports.dynclass?
 
         if base and chainSuper is true
 
-            debug 'dynclass:chaining super on instantiation'
+            if logger
+                logger.debug 'dynclass:chaining super on instantiation'
 
             eval "result = function #{name}() {" +
                  "    #{name}.__super__.constructor.apply(" +
@@ -159,7 +159,8 @@ unless exports.dynclass?
 
         else
 
-            debug 'dynclass:not chaining super on instantiation'
+            if logger
+                logger.debug 'dynclass:not chaining super on instantiation'
 
             eval "result = function #{name}() {" +
                  "    ctorMixin.apply(this, arguments);" +
@@ -167,13 +168,14 @@ unless exports.dynclass?
 
         if base
 
-            debug 'dynclass:inheriting from specified base class #{base.name}'
+            if logger
+                logger.debug 'dynclass:inheriting from specified base class #{base.name}'
 
             eval("__extends(result, base)")
 
         # set __dynclass_flags__ so that both the helper functions such as isAbstract
         # and the extender may recognize this for being a class 
-        __dynclass_flags__ = options.__dynclass_flags__ ? 0
+        flags = options.__dynclass_flags__ ? 0
         Object.defineProperty result, '__dynclass_flags__',
 
             enumerable : false
@@ -182,27 +184,27 @@ unless exports.dynclass?
 
             writable : false
 
-            value : __dynclass_flags__
+            value : flags
 
-        extender = _extenderPartial result, base, debug
+        extender = _extenderPartial result, base
 
         if options.extend
 
-            debug 'dynclass:defining fields'
-
             if typeof options.extend is 'function'
 
-                debug 'dynclass:calling user defined callback'
+                if logger
+                    logger.debug 'dynclass:calling user defined extend callback'
 
-                options.static result, extender, logger 
+                options.extend result, extender, logger 
 
             else
 
                 extender options.extend
 
-        if __dynclass_flags__ & AbstractFlagged.MODIFIER_FINAL
+        if flags & AbstractFlagged.MODIFIER_FINAL
 
-            debug 'dynclass:sealing and freezing final class'
+            if logger
+                logger.debug 'dynclass:sealing and freezing final class'
 
             Object.seal result
             Object.seal result.prototype
@@ -342,7 +344,7 @@ unless exports.dynclass?
 
                         throw new TypeError "public final field #{base.name}##{@name} cannot be overridden"
 
-        applyTo : (klass, base, debug) ->
+        applyTo : (klass, base) ->
 
             throw new Error 'derived classes must implement this.'
 
@@ -453,7 +455,7 @@ unless exports.dynclass?
 
                 throw new TypeError "setter for #{@name} is not a function"
 
-        applyTo : (klass, base, debug) ->
+        applyTo : (klass, base) ->
 
             applicant = determineApplicant klass, @
 
@@ -484,7 +486,14 @@ unless exports.dynclass?
 
                         @[internalPropertyName]
 
-            descriptor['get'] = @_getter
+            impl = @_getter
+            getter = =>
+
+                impl.apply @, arguments
+
+            getter.__dynclass_flags__ = @flags
+
+            descriptor['get'] = getter
 
             if not @isReadonly
 
@@ -510,7 +519,12 @@ unless exports.dynclass?
 
                     throw new Error "property #{klass.name}##{name} is readonly"
 
-            descriptor['set'] = @_setter
+            impl = @_setter
+            setter = =>
+
+                impl.apply @, arguments
+
+            descriptor['set'] = setter
 
             Object.defineProperty applicant, name, descriptor
 
@@ -564,19 +578,24 @@ unless exports.dynclass?
 
                 throw new TypeError "non abstract method #{@name} must have an impl"
 
-        applyTo : (klass, base, debug) ->
+        applyTo : (klass, base) ->
 
             applicant = determineApplicant klass, @
 
             name = @name
 
-            impl = @_impl
+            if @isAbstract and not @_impl
 
-            if @isAbstract and not impl
-
-                impl = ->
+                @_impl = ->
 
                     throw new TypeError "derived classes must implement #{klass.name}.#{name}"
+
+            impl = @_impl
+            getter = =>
+
+               impl.apply this, arguments
+ 
+            getter.__dynclass_flags__ = @flags
 
             Object.defineProperty applicant, @name,
 
@@ -584,7 +603,7 @@ unless exports.dynclass?
 
                 configurable : not @isFinal 
 
-                value : impl
+                get : getter
 
 
     class ClassFactory extends AbstractFlagged
@@ -657,6 +676,9 @@ unless exports.dynclass?
 
                     @set AbstractFlagged.MODIFIER_STATIC
 
+                    if dynclass.logger
+                        dynclass.logger.debug "dynclass:ClassFactory:static:flags: #{@flags}"
+
                     result = (options = {}) =>
 
                         options.__dynclass_flags__ = @flags
@@ -720,116 +742,184 @@ unless exports.dynclass?
             (new ClassFactory()).static
 
 
-    testFlag = (klass, flag) ->
+    testFlag = (flag, testee) ->
 
-        ((klass.__dynclass_flags__ ? 0) & flag) != 0
+        # TODO:remove
+        if dynclass.logger
+            dynclass.logger.debug "dynclass:testFlag:flag = #{flag}, testee = #{testee}, testee flags = #{testee.__dynclass_flags__}"
+
+        ((testee.__dynclass_flags__ ? 0) & flag) != 0
+
+
+    resolveTestee = (klass, fieldName) ->
+
+        result = klass
+
+        if fieldName
+
+            descriptor = getFieldDescriptor klass, fieldName
+
+            result = descriptor.get
+
+        result
+
+
+    getFieldDescriptor = (klass, fieldName) ->
+
+        result = null
+
+        if dynclass.isStatic klass, fieldName
+
+            result = Object.getOwnPropertyDescriptor klass, fieldName
+
+        else
+
+            result = Object.getOwnPropertyDescriptor klass.prototype, fieldName
+
+        result
 
 
     Object.defineProperty exports.dynclass, 'isStatic',
 
         enumerable : true
 
-        get : ->
+        value : (klass, fieldName) ->
 
-            (klass, fieldName) ->
+            result = false
 
-                result = false
+            if not klass
 
-                if fieldName
+                throw new TypeError 'klass is undefined'
 
-                    result = klass.hasOwnProperty fieldName
+            if fieldName
 
-                else
+                result = klass.hasOwnProperty fieldName
 
-                    result = testFlag klass, AbstractFlagged.MODIFIER_STATIC
+            else
 
-                result
+                result = testFlag AbstractFlagged.MODIFIER_STATIC, klass
+
+            result
 
 
     Object.defineProperty exports.dynclass, 'isFinal',
 
         enumerable : true
 
-        get : ->
+        value : (klass, fieldName) ->
 
-            (klass, fieldName) ->
+            if not klass
 
-                result = false
+                throw new TypeError 'klass is undefined'
 
-                if fieldName
-
-                    descriptor = null
-
-                    if dynclass.isStatic klass, fieldname
-
-                        descriptor = klass.getOwnPropertyDescriptor fieldName
-
-                    else
-
-                        klass.prototype.getOwnPropertyDescriptor fieldName
-
-                    result = descriptor.configurable is false
-
-                else
-
-                    result = testFlag(klass, AbstractFlagged.MODIFIER_FINAL) and
-                             Object.isFrozen(klass) and
-                             Object.isSealed klass
-
-                result
+            testFlag AbstractFlagged.MODIFIER_FINAL, resolveTestee klass, fieldName
 
 
     Object.defineProperty exports.dynclass, 'isPrivate',
 
         enumerable : true
 
-        get : ->
+        value : (klass, fieldName) ->
 
-            (klass, fieldName) ->
+            if not klass
 
-                throw new Error 'not implemented yet'
+                throw new TypeError 'klass is undefined'
+
+            testFlag AbstractFlagged.MODIFIER_PRIVATE, resolveTestee klass, fieldName
 
 
     Object.defineProperty exports.dynclass, 'isAbstract',
 
         enumerable : true
 
-        get : ->
+        value : (klass, fieldName) ->
 
-            (klass, fieldName) ->
+            if not klass
 
-                throw new Error 'not implemented yet'
+                throw new TypeError 'klass is undefined'
+
+            testFlag AbstractFlagged.MODIFIER_ABSTRACT, resolveTestee klass, fieldName
 
 
     Object.defineProperty exports.dynclass, 'isMethod',
 
         enumerable : true
 
-        get : ->
+        value : (klass, fieldName) ->
 
-            (klass, fieldName) ->
+            if not klass
 
-                throw new Error 'not implemented yet'
+                throw new TypeError 'klass is undefined'
+
+            if not fieldName
+
+                throw new TypeError 'fieldName is undefined'
+
+            testFlag AbstractFlagged.FIELD_METHOD, resolveTestee klass, fieldName
 
 
     Object.defineProperty exports.dynclass, 'isProperty',
 
         enumerable : true
 
-        get : ->
+        value : (klass, fieldName) ->
 
-            (klass, fieldName) ->
+            if not klass
 
-                throw new Error 'not implemented yet'
+                throw new TypeError 'klass is undefined'
+
+            if not fieldName
+
+                throw new TypeError 'fieldName is undefined'
+
+            testFlag AbstractFlagged.FIELD_PROPERTY, resolveTestee klass, fieldName
 
 
     Object.defineProperty exports.dynclass, 'isReadonly',
 
         enumerable : true
 
+        value : (klass, fieldName) ->
+
+            if not klass
+
+                throw new TypeError 'klass is undefined'
+
+            if not fieldName
+
+                throw new TypeError 'fieldName is undefined'
+
+            testFlag AbstractFlagged.MODIFIER_READONLY, resolveTestee klass, fieldName
+
+
+    # TODO:API change, logger now set on dynclass instead of being an
+    # option to dynclass on call
+    Object.defineProperty exports.dynclass, '_logger',
+
+        enumerable : false
+
+        configurable : false
+
+        writable : true
+
+        value : null
+
+
+    Object.defineProperty exports.dynclass, 'logger',
+
+        enumerable : true
+
+        configurable : false
+
         get : ->
 
-            (klass, fieldName) ->
+            dynclass._logger
 
-                throw new Error 'not implemented yet'
+        set : (logger) ->
+
+            if logger and typeof logger.debug isnt 'function'
+
+                throw new TypeError 'The specified logger must have a debug method.'
+
+            dynclass._logger = logger
 

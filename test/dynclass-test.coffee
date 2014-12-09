@@ -24,12 +24,29 @@ require 'vibejs-subclassof/macros'
 require '../src/dynclass'
 
 
+# for debugging purposes
+#console.debug = console.log
+#dynclass.logger = console
+
+
 # since we are unable to test some implementation details
 # as they are internal and not exported, we resort to
 # testing only what gets exported
 
 
 # useful helpers
+
+
+dynclassPublicPropertyTest = (propertyName) ->
+
+    ->
+
+        assert.isEnumerable dynclass, propertyName
+
+        descriptor = Object.getOwnPropertyDescriptor dynclass, propertyName
+        assert.isFalse descriptor.configurable
+        assert.isFunction descriptor.get || descriptor.value
+
 
 classFactoryFunctionTest = (topic) ->
 
@@ -96,9 +113,7 @@ vows
 
         'has a property "static"' :
 
-            'that is enumerable' : ->
-
-                assert.isEnumerable dynclass, 'static'
+            'that has a specified set of qualities' : dynclassPublicPropertyTest 'static'
 
             'that when accessed' :
 
@@ -117,9 +132,7 @@ vows
 
         'has a property "final"' :
 
-            'that is enumerable' : ->
-
-                assert.isEnumerable dynclass, 'final'
+            'that has a specified set of qualities' : dynclassPublicPropertyTest 'final'
 
             'that when accessed' :
 
@@ -146,9 +159,7 @@ vows
 
         'has a property "private"' :
 
-            'that is enumerable' : ->
-
-                assert.isEnumerable dynclass, 'private'
+            'that has a specified set of qualities' : dynclassPublicPropertyTest 'private'
 
             'that when accessed' :
 
@@ -167,9 +178,7 @@ vows
 
         'has a property "abstract"' :
 
-            'that is enumerable' : ->
-
-                assert.isEnumerable dynclass, 'abstract'
+            'that has a specified set of qualities' : dynclassPublicPropertyTest 'abstract'
 
             'that when accessed' :
 
@@ -194,14 +203,289 @@ vows
 
                     assert.throws cb, TypeError
 
-        'has a helper "isStatic"' :
+        'has a property "property"' :
+
+            'that has a specified set of qualities' : dynclassPublicPropertyTest 'property'
+
+            'that when accessed' :
+
+                topic : ->
+
+                    dynclass.property
+
+        'has a property "method"' :
+
+            'that has a specified set of qualities' : dynclassPublicPropertyTest 'method'
+
+            'that when accessed' :
+
+                topic : ->
+
+                    dynclass.method
+
+        'has a property "isStatic"' :
+
+            'that has a specified set of qualities' : dynclassPublicPropertyTest 'isStatic'
+
+            'that when accessed' :
+
+                topic : ->
+
+                    dynclass.isStatic
+
+                'has a specified set of qualities and specific error handling behaviour' : testHelperFunctionTest
+
+            '(static) that when queried for' :
+
+                topic : ->
+
+                    dynclass.static
+
+                        extend :
+
+                            prop : dynclass.property.static.defaultValue null
+
+                            meth : dynclass.method.static.impl ->
+
+                'a static class will return true' : (topic) ->
+
+                    assert.isTrue dynclass.isStatic topic
+
+                'a static property will return true' : (topic) ->
+
+                    assert.isTrue dynclass.isStatic topic, 'prop'
+
+                'a static method will return true' : (topic) ->
+
+                    assert.isTrue dynclass.isStatic topic, 'meth'
+
+            '(non static) that when queried for' :
+
+                topic : ->
+
+                    dynclass
+
+                        extend :
+
+                            prop : dynclass.property.defaultValue null
+
+                            meth : dynclass.method.impl ->
+
+                'a non static class will return false' : (topic) ->
+
+                    assert.isFalse dynclass.isStatic topic
+
+                'a non static property will return false' : (topic) ->
+
+                    assert.isFalse dynclass.isStatic topic, 'prop'
+
+                'a non static method will return false' : (topic) ->
+
+                    assert.isFalse dynclass.isStatic topic, 'meth'
+
+        'has a property "isAbstract"' :
+
+            'that has a specified set of qualities' : dynclassPublicPropertyTest 'isAbstract'
+
+            'that when accessed' :
+
+                topic : ->
+
+                    dynclass.isAbstract
+
+                'has a specified set of qualities and specific error handling behaviour' : testHelperFunctionTest
+
+            '(abstract) that when queried for' :
+
+                topic : ->
+
+                    dynclass.abstract
+
+                        extend :
+
+                            prop : dynclass.property.abstract
+
+                            meth : dynclass.method.abstract.impl ->
+
+                'an abstract class will return true' : (topic) ->
+
+                    assert.isTrue dynclass.isAbstract topic
+
+                'an abstract property will return true' : (topic) ->
+
+                    assert.isTrue dynclass.isAbstract topic, 'prop'
+
+                'an abstract method will return true' : (topic) ->
+
+                    assert.isTrue dynclass.isAbstract topic, 'meth'
+
+            '(non abstract) that when queried for' :
+
+                topic : ->
+
+                    dynclass
+
+                        extend :
+
+                            prop : dynclass.property.defaultValue null
+
+                            meth : dynclass.method.impl ->
+
+                'a non abstract class will return false' : (topic) ->
+
+                    assert.isFalse dynclass.isAbstract topic
+
+                'a non abstract property will return false' : (topic) ->
+
+                    assert.isFalse dynclass.isAbstract topic, 'prop'
+
+                'a non abstract method will return false' : (topic) ->
+
+                    assert.isFalse dynclass.isAbstract topic, 'meth'
+
+        'has a property "isPrivate"' :
+
+            'that has a specified set of qualities' : dynclassPublicPropertyTest 'isPrivate'
+
+            'that when accessed' :
+
+                topic : ->
+
+                    dynclass.isPrivate
+
+                'has a specified set of qualities and specific error handling behaviour' : testHelperFunctionTest
+
+            '(private) that when queried for' :
+
+                topic : ->
+
+                    dynclass.private
+
+                        extend :
+
+                            prop : dynclass.property.private
+
+                            meth : dynclass.method.private.impl ->
+
+                'a private class will return true' : (topic) ->
+
+                    assert.isTrue dynclass.isPrivate topic
+
+                'a private property will return true' : (topic) ->
+
+                    assert.isTrue dynclass.isPrivate topic, 'prop'
+
+                'a private method will return true' : (topic) ->
+
+                    assert.isTrue dynclass.isPrivate topic, 'meth'
+
+            '(non private) that when queried for' :
+
+                topic : ->
+
+                    dynclass
+
+                        extend :
+
+                            prop : dynclass.property.defaultValue null
+
+                            meth : dynclass.method.impl ->
+
+                'a non private class will return false' : (topic) ->
+
+                    assert.isFalse dynclass.isPrivate topic
+
+                'a non private property will return false' : (topic) ->
+
+                    assert.isFalse dynclass.isPrivate topic, 'prop'
+
+                'a non private method will return false' : (topic) ->
+
+                    assert.isFalse dynclass.isPrivate topic, 'meth'
+
+        'has a property "isFinal"' :
+
+            'that has a specified set of qualities' : dynclassPublicPropertyTest 'isFinal'
+
+            'that when accessed' :
+
+                topic : ->
+
+                    dynclass.isFinal
+
+                'has a specified set of qualities and specific error handling behaviour' : testHelperFunctionTest
+
+            '(final) that when queried for' :
+
+                topic : ->
+
+                    dynclass.final
+
+                        extend :
+
+                            prop : dynclass.property.final
+
+                            meth : dynclass.method.final.impl ->
+
+                'a final class will return true' : (topic) ->
+
+                    assert.isTrue dynclass.isFinal topic
+
+                'a final property will return true' : (topic) ->
+
+                    assert.isTrue dynclass.isFinal topic, 'prop'
+
+                'a final method will return true' : (topic) ->
+
+                    assert.isTrue dynclass.isFinal topic, 'meth'
+
+            '(non final) that when queried for' :
+
+                topic : ->
+
+                    dynclass
+
+                        extend :
+
+                            prop : dynclass.property.defaultValue null
+
+                            meth : dynclass.method.impl ->
+
+                'a non final class will return false' : (topic) ->
+
+                    assert.isFalse dynclass.isFinal topic
+
+                'a non final property will return false' : (topic) ->
+
+                    assert.isFalse dynclass.isFinal topic, 'prop'
+
+                'a non final method will return false' : (topic) ->
+
+                    assert.isFalse dynclass.isFinal topic, 'meth'
+
+        'has a property "isMethod"' :
 
             topic : ->
 
-                dynclass.isStatic
+                dynclass.isMethod
 
             'that has a specified set of qualities and specific error handling behaviour' : testHelperFunctionTest
 
+        'has a property "isProperty"' :
+
+            topic : ->
+
+                dynclass.isProperty
+
+            'that has a specified set of qualities and specific error handling behaviour' : testHelperFunctionTest
+
+        'has a property "isReadonly"' :
+
+            topic : ->
+
+                dynclass.isReadonly
+
+            'that has a specified set of qualities and specific error handling behaviour' : testHelperFunctionTest
 
     .export module
 
