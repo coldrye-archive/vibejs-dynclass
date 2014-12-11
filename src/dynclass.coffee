@@ -1,4 +1,4 @@
-#PI Documentation|API Documentation]]
+#
 # Copyright 2014 Carsten Klein
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -793,7 +793,7 @@ unless exports.dynclass?
 
             if fieldName
 
-                result = klass.hasOwnProperty fieldName
+                result = __hasOwnProperty.call klass, fieldName
 
             else
 
