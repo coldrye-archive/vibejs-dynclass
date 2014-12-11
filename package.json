@@ -1,6 +1,6 @@
 {
     "name": "vibejs-dynclass",
-    "version": "0.0.1",
+    "version": "0.1.0",
     "description": "dynclass factory for creating classes dynamically for your Javascript/Coffee-Script application",
     "main": "./src/dynclass.coffee",
     "repository": {
