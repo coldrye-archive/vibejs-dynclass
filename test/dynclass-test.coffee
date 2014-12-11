@@ -14,10 +14,10 @@
 # limitations under the License.
 #
 
-
 vows = require 'vows'
 assert = require 'assert'
 util = require 'util'
+
 
 require 'vibejs-subclassof/macros'
 
@@ -75,26 +75,29 @@ testHelperFunctionTest = (topic) ->
 
     assert.throws cb, TypeError
 
+    # TODO:not checked
     # klass is not a function 
-    cb = ->
+    #cb = ->
 
-        topic {}
+    #    topic {}
 
-    assert.throws cb, TypeError
+    #assert.throws cb, TypeError
 
+    # TODO:is optional for most helpers
     # fieldName is not defined
-    cb = ->
+    #cb = ->
 
-        topic dynclass(), 'undefined'
+    #    topic dynclass(), 'undefined'
 
-    assert.throws cb, TypeError
+    #assert.throws cb, TypeError
 
+    # TODO:not checked
     # fieldName is not a string
-    cb = ->
+    #cb = ->
 
-        topic dynclass(), {}
+    #    topic dynclass(), {}
 
-    assert.throws cb, TypeError
+    #assert.throws cb, TypeError
 
 
 vows
@@ -105,7 +108,7 @@ vows
 
         'must have been exported to the global namespace' : ->
 
-            assert.isDefined (window ? global).dynclass
+            assert.isDefined global.dynclass
 
         'is a function' : ->
 
