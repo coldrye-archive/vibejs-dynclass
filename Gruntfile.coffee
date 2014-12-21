@@ -42,7 +42,7 @@ latebind = (grunt) ->
             delete pkg.scripts
 
             # the layout of the resulting package will be shallow
-            pkg.main = './namespaces.js'
+            pkg.main = './dynclass.js'
 
             grunt.file.write target + 'package.json', JSON.stringify pkg, null, '    '
 
