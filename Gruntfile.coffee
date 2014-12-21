@@ -142,6 +142,7 @@ module.exports = (grunt) ->
         clean :
 
             all : ['./build']
+            javascript : ['./build/javascript']
             coverage : ['./build/coverage']
             npm : ['./build/npm']
             meteor : ['./build/meteor']
