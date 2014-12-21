@@ -1,17 +1,21 @@
 # TODO:FILEHEADER
 
 semver = require('semver').parse
+path = require 'path'
+
+require('coffee-script').register()
+
 
 # we do not want the below grunt tasks to show up
 # in our task list
 
 lateBoundNpmTasks = [
+    'grunt-coffee-coverage'
     'grunt-vows'
     'grunt-changelog'
     'grunt-contrib-copy'
     'grunt-contrib-uglify'
     'grunt-contrib-coffee'
-    'grunt-istanbul'
 ]
 
 latebound = false
@@ -88,6 +92,16 @@ latebind = (grunt) ->
 
                 grunt.file.copy './' + path, target + path
 
+        grunt.registerTask 'prepare-coverage', 'prepares the coverage build (./build/coverage)', ->
+
+            # prepare coverage src folder
+            grunt.file.mkdir './build/coverage/src'
+
+            # copy tests 
+            grunt.file.recurse './test', (abspath, rootdir, subdir, filename) ->
+
+                grunt.file.copy path.join(rootdir, filename), path.join('./build/coverage/test', filename)
+
         latebound = true
 
 
@@ -125,6 +139,13 @@ module.exports = (grunt) ->
 
         pkg: grunt.file.readJSON 'package.json'
 
+        clean :
+
+            all : ['./build']
+            coverage : ['./build/coverage']
+            npm : ['./build/npm']
+            meteor : ['./build/meteor']
+
         vows :
 
             all :
@@ -136,11 +157,24 @@ module.exports = (grunt) ->
                     verbose: false
                     silent: false
                     colors: true 
-                    # somehow, isolate will not work
                     isolate: false
                     coverage: 'json'
 
                 src: ['./test/*.coffee']
+
+            all_coverage :
+
+                options :
+
+                    # String {spec|json|dot-matrix|xunit|tap}
+                    reporter: 'spec'
+                    verbose: false
+                    silent: false
+                    colors: true 
+                    isolate: false
+                    coverage: 'html'
+
+                src: ['./build/coverage/test/*.coffee']
 
         coffee :
 
@@ -163,6 +197,18 @@ module.exports = (grunt) ->
                 src : ['./src/**/*.coffee', './test/**/*.coffee']
                 dest : './build/javascript'
                 ext : '.js'
+
+        coffeeCoverage :
+
+            options :
+
+                path : 'relative'
+
+            all :
+
+                src : 'src/'
+
+                dest : './build/coverage/src/'
 
         changelog :
 
@@ -195,7 +241,7 @@ module.exports = (grunt) ->
                         fixes : changelogBuildPartial 'fixes', 'entry', 'Bug Fixes'
                         others : changelogBuildPartial 'others', 'entry', 'Miscellaneous'
 
-        meteor:
+        meteor :
 
             srcdir : './build/javascript/src'
 
@@ -209,60 +255,26 @@ module.exports = (grunt) ->
                     'dynclass.js'
                 ]
 
-    grunt.registerTask 'clean', 'cleans all builds (./build)', ->
-
-        if grunt.file.exists './build'
-
-            grunt.file.delete './build'
-
-    grunt.registerTask 'clean-javascript', 'cleans javascript build (./build/javascript)', ->
-
-        if grunt.file.exists './build/javascript'
-
-            grunt.file.delete './build/javascript'
-
-    grunt.registerTask 'clean-uglified', 'cleans uglified javascript build (./build/uglified)', ->
-
-        if grunt.file.exists './build/uglified'
-
-            grunt.file.delete './build/uglified'
-
-    grunt.registerTask 'clean-npm', 'cleans npm build (./build/npm)', ->
-
-        if grunt.file.exists './build/npm'
-
-            grunt.file.delete './build/npm'
-
-    grunt.registerTask 'clean-meteor', 'cleans meteor build (./build/meteor)', ->
-
-        if grunt.file.exists './build/meteor'
-
-            grunt.file.delete './build/meteor'
-
-    grunt.registerTask 'clean-coverage', 'cleans coverage build (./build/coverage)', ->
-
-        if grunt.file.exists './build/coverage'
-
-            grunt.file.delete './build/coverage'
-
     grunt.registerTask 'package-npm', 'assemble npm package (./build/npm)', ->
 
         latebind grunt
 
+        grunt.task.run 'clean:javascript'
+        grunt.task.run 'clean:npm'
         grunt.task.run 'test'
         grunt.task.run 'build-javascript'
         #grunt.task.run 'build-uglified'
-        grunt.task.run 'clean-npm'
         grunt.task.run 'assemble-npm'
 
     grunt.registerTask 'package-meteor', 'assemble meteor package (./build/meteor)', ->
 
         latebind grunt
 
+        grunt.task.run 'clean:javascript'
+        grunt.task.run 'clean:meteor'
         grunt.task.run 'test'
         grunt.task.run 'build-javascript:bare'
         #grunt.task.run 'build-uglified'
-        grunt.task.run 'clean-meteor'
         grunt.task.run 'assemble-meteor'
 
     grunt.registerTask 'publish-npm', 'publish npm package', ->
@@ -279,11 +291,12 @@ module.exports = (grunt) ->
 
     grunt.registerTask 'coverage', 'coverage analysis and reports (./build/coverage)', ->
 
-        grunt.task.requires 'build-javascript'
-
         latebind grunt
 
-        throw new Error 'not implemented yet.'
+        grunt.task.run 'clean:coverage'
+        grunt.task.run 'prepare-coverage'
+        grunt.task.run 'coffeeCoverage'
+        grunt.task.run 'test:all_coverage'
 
     grunt.registerTask 'build-javascript', 'builds the javascript, options: default|bare (./build/javascript)', (mode = 'default') ->
 
@@ -294,16 +307,15 @@ module.exports = (grunt) ->
     grunt.registerTask 'build-uglified', 'builds the uglified javascript (./build/uglified)', ->
 
         #grunt.task.requires 'build-javascript'
-        #grunt.task.run 'clean-uglified'
         #latebind grunt
 
         throw new Error 'not implemented yet.'
 
-    grunt.registerTask 'test', 'run all tests', ->
+    grunt.registerTask 'test', 'run all tests', (mode = 'all') ->
 
         latebind grunt
 
-        grunt.task.run 'vows'
+        grunt.task.run 'vows:' + mode
 
     grunt.registerTask 'bump-version', 'bumps the version number by one, either :major, :minor or :patch', (mode = 'patch') ->
 
@@ -321,7 +333,8 @@ module.exports = (grunt) ->
 
     grunt.registerTask 'default', [
         'clean', 'build-javascript', 'coverage', 'test', 
-        'build-uglified', 'package-npm', 'package-meteor'
+        #'build-uglified',
+        'package-npm', 'package-meteor'
     ]
 
     grunt.registerTask 'update-changelog', (after, before) ->
@@ -353,4 +366,6 @@ module.exports = (grunt) ->
                 grunt.task.run changelogTask
 
                 done()
+
+    grunt.loadNpmTasks 'grunt-contrib-clean'
 
