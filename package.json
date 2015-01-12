@@ -33,7 +33,7 @@
         "grunt-vows": ">=0.4.1",
         "semver": ">=4.1.0",
         "vibejs-subclassof": ">=0.0.1",
-        "grunt-changelog": "vibejs/grunt-changelog",
+        "grunt-changelog": "vibejs/grunt-changelog#gh-24",
         "vows": "vibejs/vows.git"
     }
 }

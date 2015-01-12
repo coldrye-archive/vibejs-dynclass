@@ -217,6 +217,10 @@ module.exports = (grunt) ->
 
                 options :
 
+                    logArguments : [
+                        '--pretty=%B'
+                    ]
+
                     others : true
 
                     dest : 'CHANGELOG'
@@ -358,7 +362,8 @@ module.exports = (grunt) ->
 
                 if previousTag is null
 
-                    changelogTask += ":commit:#{tag}"
+                    # the tag did not exist yet
+                    changelogTask += "::commit"
 
                 else
 
